@@ -1,0 +1,64 @@
+-- 1. returning all records
+CREATE OR REPLACE FUNCTION search_phonebook(pattern TEXT)
+RETURNS TABLE(id INT, username TEXT, phone TEXT) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT * FROM PhoneBook
+    WHERE username ILIKE '%' || pattern || '%'
+       OR phone ILIKE '%' || pattern || '%';
+END;
+$$ LANGUAGE plpgsql;
+
+-- 2. New user by name and phone
+CREATE OR REPLACE PROCEDURE insert_or_update_user(username TEXT, userphone TEXT)
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM PhoneBook WHERE PhoneBook.username = username) THEN
+        UPDATE PhoneBook SET phone = userphone WHERE PhoneBook.username = username;
+    ELSE
+        INSERT INTO PhoneBook(username, phone) VALUES (username, userphone);
+    END IF;
+END;
+$$;
+
+
+-- 3. inserting many users in 1 time
+CREATE OR REPLACE PROCEDURE insert_many_users(usernames TEXT[], userphones TEXT[], OUT invalid_entries TEXT)
+LANGUAGE plpgsql AS $$
+DECLARE
+    i INTEGER := 1;
+BEGIN
+    invalid_entries := '';
+    WHILE i <= array_length(usernames, 1) LOOP
+        IF userphones[i] ~ '^\+?[0-9]{10,15}$' THEN
+            CALL insert_or_update_user(usernames[i], userphones[i]);
+        ELSE
+            invalid_entries := invalid_entries || '(' || usernames[i] || ', ' || userphones[i] || '), ';
+        END IF;
+        i := i + 1;
+    END LOOP;
+    IF invalid_entries <> '' THEN
+        invalid_entries := left(invalid_entries, length(invalid_entries) - 2);
+    END IF;
+END;
+$$;
+
+-- 4. Pagination
+CREATE OR REPLACE FUNCTION get_phonebook_paginated(limit_rows INT, offset_rows INT)
+RETURNS TABLE(id INT, username TEXT, phone TEXT) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT * FROM PhoneBook
+    ORDER BY id
+    LIMIT limit_rows OFFSET offset_rows;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 5. Deliting by name and phone
+CREATE OR REPLACE PROCEDURE delete_user(username TEXT, userphone TEXT)
+LANGUAGE plpgsql AS $$
+BEGIN
+    DELETE FROM PhoneBook
+    WHERE username = username OR phone = userphone;
+END;
+$$;
